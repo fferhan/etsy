@@ -92,6 +92,18 @@ async function unitTests() {
     assert.equal(listingUrl({ listing_id: 9 }), "https://www.etsy.com/listing/9");
   });
 
+  const { parseCsvRecords } = await import("../lib/csv.js");
+  await test("parseCsv tirnakli alan, gomulu virgul ve satir sonunu dogru okur", () => {
+    const sample =
+      'TITLE,DESCRIPTION,TAGS\n' +
+      '"Mug, ceramic","Satir bir\nSatir iki ""tirnakli""","a,b,c"\n';
+    const { headers, records } = parseCsvRecords(sample);
+    assert.deepEqual(headers, ["TITLE", "DESCRIPTION", "TAGS"]);
+    assert.equal(records[0].TITLE, "Mug, ceramic");
+    assert.ok(records[0].DESCRIPTION.includes("\n"));
+    assert.ok(records[0].DESCRIPTION.includes('"tirnakli"'));
+  });
+
   const { selectPinnable } = await import("../pinterest_post.js");
   await test("selectPinnable gorselsiz ve pinlenmis listingleri ayirir", () => {
     const { pinnable, skipped } = selectPinnable(
@@ -107,6 +119,14 @@ async function unitTests() {
       "daha once pinlendi",
       "gorsel URL'si yok",
     ]);
+  });
+  await test("selectPinnable linki olmayan CSV kaydini atlar", () => {
+    const { pinnable, skipped } = selectPinnable(
+      [{ listing_id: "csv:mug", images: [{ url_fullxfull: "a.jpg" }], url: null }],
+      new Set(),
+    );
+    assert.deepEqual(pinnable, []);
+    assert.equal(skipped[0].reason, "link yok (--shop-url verin)");
   });
 }
 
@@ -212,6 +232,48 @@ async function e2eTests() {
     await test("pin_remaining.js tekrar calistirildiginda hicbir sey paylasmaz", async () => {
       await exec("pin_remaining.js", ["--yes"]);
       assert.equal(mock.state.pins.length, 3);
+    });
+    await test("scrape_csv.js Etsy CSV'sini okuyup listings.json uretir", async () => {
+      const csv = [
+        "TITLE,DESCRIPTION,PRICE,CURRENCY_CODE,QUANTITY,TAGS,MATERIALS,SKU,IMAGE1,IMAGE2",
+        '"Handmade Ceramic Mug, ceramic mug, mug gift","Kisa aciklama, virgullu.\nIkinci satir.",24.00,USD,5,"ceramic mug,pottery","ceramic,glaze",SKU-1,https://img.example/1.jpg,https://img.example/1b.jpg',
+        '"Linen Apron","Ikinci urunun aciklamasi.",30.00,USD,2,"apron,linen","linen",,https://img.example/2.jpg,',
+      ].join("\n");
+      const csvPath = path.join(dataDir, "EtsyListingsDownload.csv");
+      await fs.writeFile(csvPath, csv, "utf8");
+
+      await exec("scrape_csv.js", [csvPath, "--shop-url", "https://www.etsy.com/shop/Test"]);
+      const data = await readData("listings.json");
+
+      assert.equal(data.source, "csv");
+      assert.equal(data.count, 2);
+      // Gomulu virgul ve satir sonu dogru ayrismali
+      assert.equal(data.listings[0].title, "Handmade Ceramic Mug, ceramic mug, mug gift");
+      assert.ok(data.listings[0].description.includes("Ikinci satir."));
+      assert.deepEqual(data.listings[0].tags, ["ceramic mug", "pottery"]);
+      assert.equal(data.listings[0].images.length, 2);
+      // SKU varsa anahtar ondan, yoksa basliktan slug
+      assert.equal(data.listings[0].listing_id, "csv:sku-SKU-1");
+      assert.equal(data.listings[1].listing_id, "csv:linen-apron");
+      assert.ok(data.listings[0].audit.length > 0, "denetim calismali");
+    });
+
+    await test("CSV kaynakli kayitlar optimize edilir ama apply.js onlari yazmaz", async () => {
+      await exec("optimize_all.js", ["--force"]);
+      const store = await readData("optimized.json");
+      const csvResults = store.results.filter((result) =>
+        String(result.listing_id).startsWith("csv:"),
+      );
+      assert.equal(csvResults.length, 2, "CSV kayitlari optimize edilmeliydi");
+
+      const { stdout, stderr } = await exec("apply.js", ["--yes"]);
+      // Onceki testlerden kalan sayisal listing_id'ler yeniden yazilabilir;
+      // onemli olan hicbir CSV kaydinin Etsy'ye gitmemesi.
+      const csvWrites = mock.state.updates.filter((update) =>
+        String(update.listingId).startsWith("csv"),
+      );
+      assert.deepEqual(csvWrites, [], "CSV kaydi Etsy'ye yazilmamali");
+      assert.ok(`${stdout}${stderr}`.includes("CSV kaynakli"));
     });
   } finally {
     await mock.stop();

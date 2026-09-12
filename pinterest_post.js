@@ -53,7 +53,13 @@ export function selectPinnable(listings, pinnedIds) {
       skipped.push({ listing_id: listing.listing_id, reason: "gorsel URL'si yok" });
       continue;
     }
-    pinnable.push({ listing, imageUrl });
+    // Pinterest pin'i linksiz ise urune trafik getirmez; linki olmayani pinlemiyoruz.
+    const link = listingUrl(listing);
+    if (!link) {
+      skipped.push({ listing_id: listing.listing_id, reason: "link yok (--shop-url verin)" });
+      continue;
+    }
+    pinnable.push({ listing, imageUrl, link });
   }
 
   return { pinnable, skipped };
@@ -109,11 +115,11 @@ export async function runPinJob(args, { onlyRemaining = false } = {}) {
   log.step(`${queue.length} pin ${live ? "PAYLASILACAK" : "paylasilirdi (kuru calisma)"}.`);
 
   if (!live) {
-    for (const { listing, imageUrl } of queue.slice(0, 10)) {
+    for (const { listing, imageUrl, link } of queue.slice(0, 10)) {
       const content = resolveContent(listing, optimizedStore, Boolean(args.optimized));
       log.plain(`\n${log.bold(String(listing.listing_id))}`);
       log.plain(`  baslik : ${content.title}`);
-      log.plain(`  link   : ${listingUrl(listing)}`);
+      log.plain(`  link   : ${link}`);
       log.plain(`  gorsel : ${log.dim(imageUrl)}`);
     }
     if (queue.length > 10) log.plain(log.dim(`\n... ve ${queue.length - 10} pin daha`));
@@ -125,13 +131,13 @@ export async function runPinJob(args, { onlyRemaining = false } = {}) {
   const failures = [];
   let done = 0;
 
-  for (const { listing, imageUrl } of queue) {
+  for (const { listing, imageUrl, link } of queue) {
     const content = resolveContent(listing, optimizedStore, Boolean(args.optimized));
     try {
       const pin = await createPin({
         title: content.title,
         description: content.description,
-        link: listingUrl(listing),
+        link,
         imageUrl,
         boardId,
       });

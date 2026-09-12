@@ -51,6 +51,22 @@ async function main() {
 
   let results = store.results;
 
+  // CSV'den gelen kayitlarin gercek listing_id'si yok; Etsy'ye yazilamazlar.
+  const csvBacked = results.filter((result) => !/^\d+$/.test(String(result.listing_id)));
+  if (csvBacked.length > 0) {
+    results = results.filter((result) => /^\d+$/.test(String(result.listing_id)));
+    log.warn(
+      `${csvBacked.length} kayit CSV kaynakli, Etsy'ye yazilamaz (gercek listing_id yok).`,
+    );
+    log.plain(`  Bu metinleri ${paths.plan} dosyasindan elle yapistirin.`);
+    log.plain("  API anahtariniz onaylandiginda: node scrape.js && node optimize_all.js --force");
+  }
+
+  if (results.length === 0) {
+    log.ok("Etsy'ye yazilabilecek kayit yok.");
+    return;
+  }
+
   if (args.id) {
     results = results.filter((result) => String(result.listing_id) === String(args.id));
     if (results.length === 0) throw new Error(`Listing ${args.id} optimize sonuclarinda yok.`);

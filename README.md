@@ -32,12 +32,28 @@ cp .env.example .env    # sonra .env içini doldurun
 Yalnızca optimizasyon yapacaksanız Pinterest anahtarları gerekmez; her komut
 kendi ihtiyacı olan değişkenleri kontrol eder.
 
-## Akış
+## İki giriş yolu
+
+Listing verisini iki yoldan alabilirsiniz. Optimizasyon ve sonrası aynıdır:
 
 ```
-scrape.js  ──►  optimize_all.js  ──►  apply.js  ──►  pinterest_post.js
-(çek)           (Claude ile yaz)      (geri yaz)     (pin paylaş)
+scrape.js      ─┐
+(Etsy API)      ├─►  optimize_all.js  ──►  apply.js  ──►  pinterest_post.js
+scrape_csv.js  ─┘    (Claude ile yaz)      (geri yaz)     (pin paylaş)
+(Etsy CSV export)                          ⚠ API şart
 ```
+
+| | `scrape.js` | `scrape_csv.js` |
+| --- | --- | --- |
+| Gerektirdiği | API key + OAuth token | Sadece Etsy hesabınız |
+| Başlık, açıklama, tag | ✅ | ✅ |
+| Attribute'lar | ✅ | ❌ |
+| `listing_id` | ✅ | ❌ (CSV'de yok) |
+| `apply.js` ile geri yazma | ✅ | ❌ — elle yapıştırma |
+
+**API onayınız yoksa `scrape_csv.js` ile başlayın.** Optimizasyon, denetim ve plan
+tamamen çalışır; sadece geri yazma adımı elle kalır. API onayı gelince
+`scrape.js`'e geçersiniz, başka hiçbir şey değişmez.
 
 ```bash
 node scrape.js                    # tüm aktif listingleri data/listings.json'a çek
@@ -62,6 +78,28 @@ node scrape.js --whoami             # ETSY_SHOP_ID'nizi bulun
 
 Çekerken her listingi kurallara göre denetler; sonuç `data/listings.json` içinde
 her listingin `audit` alanına yazılır.
+
+### `scrape_csv.js` — API olmadan veri çekme
+
+Etsy'nin kendi CSV export'unu okur. Scraping değil — Etsy'nin satıcılara sunduğu
+resmi indirme, yani ToS sorunu ve bot koruması yok.
+
+CSV'yi indirin: **Shop Manager → Settings → Options → Download Data →
+"Currently for Sale Listings" → Download CSV**. Masaüstü tarayıcı gerekiyor,
+mobil uygulamada bu sekme yok.
+
+```bash
+node scrape_csv.js ~/Downloads/EtsyListingsDownload.csv
+node scrape_csv.js ~/Downloads/EtsyListingsDownload.csv \
+  --shop-url https://www.etsy.com/shop/MagazaAdiniz
+```
+
+`--shop-url` Pinterest için gerekli: CSV'de listing URL'si olmadığından pin
+linkleri mağaza sayfanıza gider. Vermezseniz pin komutları o kayıtları atlar.
+
+**CSV'de `listing_id` yok.** Bunun yerine SKU'dan (yoksa başlık slug'ından)
+`csv:` önekli yerel bir anahtar üretilir. `apply.js` bu kayıtları tanır ve
+Etsy'ye yazmayı reddeder — gerçek listing ID olmadan güncelleme yapılamaz.
 
 ### `scrape_new.js` — sadece yeni/değişmiş olanlar
 
@@ -180,7 +218,8 @@ Gerçek API'lere istek atmaz, anahtar gerektirmez.
 ## Dosya düzeni
 
 ```
-scrape.js           Listingleri çek
+scrape.js           Listingleri Etsy API'sinden çek
+scrape_csv.js       Listingleri Etsy CSV export'undan oku (API gerekmez)
 scrape_new.js       Sadece yeni/değişmiş olanları çek
 optimize.js         Tek listing optimize et
 optimize_all.js     Toplu optimize et + plan çıkar
@@ -193,6 +232,7 @@ lib/
   claude.js         Anthropic istemcisi, yapısal çıktı, eşzamanlılık havuzu
   pinterest.js      Pinterest API v5 istemcisi
   rules.js          SEO kuralları + programatik denetçi
+  csv.js            RFC 4180 CSV ayrıştırıcı (bağımlılıksız)
   store.js          data/ altına atomik JSON yazma
   cli.js, log.js    Argüman ayrıştırma, çıktı
 test/
