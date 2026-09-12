@@ -9,7 +9,7 @@
  *   node optimize.js --id 1234567890 --save    # sonucu optimized.json'a ekle
  */
 import { parseArgs, asNumber, runMain } from "./lib/cli.js";
-import { requireConfig } from "./lib/config.js";
+import { config, requireConfig } from "./lib/config.js";
 import { optimizeListing } from "./lib/claude.js";
 import { fetchListingProperties } from "./lib/etsy.js";
 import { readJson, writeJson, paths } from "./lib/store.js";
@@ -26,6 +26,28 @@ function findListing(listings, args) {
   return listings[index];
 }
 
+/**
+ * Attribute'lari yalnizca cekilebiliyorsa ceker:
+ * CSV kaynakli kayitlarin gercek listing_id'si yok, Etsy anahtari da
+ * olmayabilir. Ikisinden biri eksikse bos donup devam ediyoruz - attribute
+ * verisi olmadan da baslik ve aciklama optimize edilebiliyor.
+ */
+async function loadProperties(listing) {
+  const isApiListing = /^\d+$/.test(String(listing.listing_id));
+  const hasEtsyCredentials = Boolean(
+    config.etsy.apiKey && config.etsy.shopId && config.etsy.accessToken,
+  );
+
+  if (!isApiListing || !hasEtsyCredentials) {
+    if (isApiListing) {
+      log.info("Etsy anahtari yok, attribute'lar atlandi.");
+    }
+    return [];
+  }
+
+  return fetchListingProperties(listing.listing_id);
+}
+
 function printBlock(label, text, limit) {
   const suffix = limit ? log.dim(` (${text.length} karakter, sinir ${limit})`) : log.dim(` (${text.length} karakter)`);
   log.plain(`\n${log.bold(label)}${suffix}`);
@@ -33,7 +55,9 @@ function printBlock(label, text, limit) {
 }
 
 async function main() {
-  requireConfig(["etsyRead", "claude"]);
+  // Etsy anahtari sart degil: CSV yolunda hic Etsy kimlik bilgisi yok.
+  // Attribute cekimi asagida, yalnizca mumkun oldugunda yapiliyor.
+  requireConfig(["claude"]);
   const args = parseArgs();
 
   const data = await readJson(paths.listings);
@@ -42,7 +66,7 @@ async function main() {
   const listing = findListing(data.listings, args);
   log.step(`Optimize ediliyor: ${listing.listing_id} - ${(listing.title ?? "").slice(0, 60)}`);
 
-  const properties = listing.properties ?? (await fetchListingProperties(listing.listing_id));
+  const properties = listing.properties ?? (await loadProperties(listing));
   const result = await optimizeListing(listing, { properties });
   const optimized = result.optimized;
 

@@ -258,6 +258,21 @@ async function e2eTests() {
       assert.ok(data.listings[0].audit.length > 0, "denetim calismali");
     });
 
+    await test("optimize.js CSV yolunda Etsy anahtari olmadan calisir", async () => {
+      // Regresyon: optimize.js eskiden etsyRead sart kosuyordu, bu da CSV
+      // yolunu tamamen kullanilmaz yapiyordu (kullanicida Etsy anahtari yok).
+      const csvOnlyEnv = { ...env };
+      delete csvOnlyEnv.ETSY_API_KEY;
+      delete csvOnlyEnv.ETSY_ACCESS_TOKEN;
+      delete csvOnlyEnv.ETSY_SHOP_ID;
+
+      const { stdout } = await run("node", [path.join(root, "optimize.js"), "--index", "0"], {
+        env: csvOnlyEnv,
+        cwd: root,
+      });
+      assert.ok(stdout.includes("YENI BASLIK"), "optimize ciktisi bekleniyordu");
+    });
+
     await test("CSV kaynakli kayitlar optimize edilir ama apply.js onlari yazmaz", async () => {
       await exec("optimize_all.js", ["--force"]);
       const store = await readData("optimized.json");
