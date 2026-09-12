@@ -1,0 +1,24 @@
+{
+  "name": "etsy-listing-optimizer",
+  "version": "1.0.0",
+  "description": "Etsy listinglerini cekip Claude ile SEO optimizasyonu yapan, degisiklikleri geri yazan ve Pinterest'e pin paylasan arac seti.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "scrape": "node scrape.js",
+    "scrape:new": "node scrape_new.js",
+    "optimize": "node optimize.js",
+    "optimize:all": "node optimize_all.js",
+    "apply": "node apply.js",
+    "pin": "node pinterest_post.js",
+    "pin:remaining": "node pin_remaining.js",
+    "test": "node test/run.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "dotenv": "^16.4.5",
+    "zod": "^4.6.2"
+  }
+}
